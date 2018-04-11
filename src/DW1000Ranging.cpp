@@ -38,7 +38,7 @@ DW1000Device DW1000RangingClass::_networkDevices[MAX_DEVICES];
 byte         DW1000RangingClass::_currentAddress[8];
 byte         DW1000RangingClass::_currentShortAddress[2];
 byte         DW1000RangingClass::_lastSentToShortAddress[2];
-volatile uint8_t DW1000RangingClass::_networkDevicesNumber = 0; // TODO short, 8bit?
+uint8_t      DW1000RangingClass::_networkDevicesNumber = 0; // TODO short, 8bit?
 int16_t      DW1000RangingClass::_lastDistantDevice    = 0; // TODO short, 8bit?
 DW1000Mac    DW1000RangingClass::_globalMac;
 
@@ -159,24 +159,17 @@ void DW1000RangingClass::generalStart() {
 }
 
 
-void DW1000RangingClass::startAsAnchor(char address[], const byte mode[], const bool randomShortAddress) {
+void DW1000RangingClass::startAsAnchor(char address[], const byte mode[]) {
 	//save the address
 	DW1000.convertToByte(address, _currentAddress);
 	//write the address on the DW1000 chip
 	DW1000.setEUI(address);
-	Serial.print("device address: ");
-	Serial.println(address);
-	if (randomShortAddress) {
-		//we need to define a random short address:
-		randomSeed(analogRead(0));
-		_currentShortAddress[0] = random(0, 256);
-		_currentShortAddress[1] = random(0, 256);
-	}
-	else {
-		// we use first two bytes in addess for short address
-		_currentShortAddress[0] = _currentAddress[0];
-		_currentShortAddress[1] = _currentAddress[1];
-	}
+	//Serial.print("device address: ");
+	//Serial.println(address);
+	//we need to define a random short address:
+	//randomSeed(analogRead(0));
+	_currentShortAddress[0] = 2;  //unique anchor ID for example 23
+	_currentShortAddress[1] = 3;
 	
 	//we configur the network for mac filtering
 	//(device Address, network ID, frequency)
@@ -188,28 +181,21 @@ void DW1000RangingClass::startAsAnchor(char address[], const byte mode[], const 
 	//defined type as anchor
 	_type = ANCHOR;
 	
-	Serial.println("### ANCHOR ###");
+	//Serial.println("### ANCHOR ###");
 	
 }
 
-void DW1000RangingClass::startAsTag(char address[], const byte mode[], const bool randomShortAddress) {
+void DW1000RangingClass::startAsTag(char address[], const byte mode[]) {
 	//save the address
 	DW1000.convertToByte(address, _currentAddress);
 	//write the address on the DW1000 chip
 	DW1000.setEUI(address);
 	Serial.print("device address: ");
 	Serial.println(address);
-	if (randomShortAddress) {
-		//we need to define a random short address:
-		randomSeed(analogRead(0));
-		_currentShortAddress[0] = random(0, 256);
-		_currentShortAddress[1] = random(0, 256);
-	}
-	else {
-		// we use first two bytes in addess for short address
-		_currentShortAddress[0] = _currentAddress[0];
-		_currentShortAddress[1] = _currentAddress[1];
-	}
+	//we need to define a random short address:
+	randomSeed(analogRead(0));
+	_currentShortAddress[0] = random(0, 256);
+	_currentShortAddress[1] = random(0, 256);
 	
 	//we configur the network for mac filtering
 	//(device Address, network ID, frequency)
@@ -316,7 +302,7 @@ DW1000Device* DW1000RangingClass::searchDistantDevice(byte shortAddress[]) {
 		}
 	}
 	
-	return nullptr;
+	return NULL;
 }
 
 DW1000Device* DW1000RangingClass::getDistantDevice() {
@@ -373,12 +359,12 @@ int16_t DW1000RangingClass::detectMessageType(byte datas[]) {
 void DW1000RangingClass::loop() {
 	//we check if needed to reset !
 	checkForReset();
-	uint32_t time = millis(); // TODO other name - too close to "timer"
+	uint32_t time = millis(); 
 	if(time-timer > _timerDelay) {
 		timer = time;
 		timerTick();
 	}
-	
+
 	if(_sentAck) {
 		_sentAck = false;
 		
@@ -393,9 +379,7 @@ void DW1000RangingClass::loop() {
 			if(messageType == POLL_ACK) {
 				DW1000Device* myDistantDevice = searchDistantDevice(_lastSentToShortAddress);
 				
-				if (myDistantDevice) {
-					DW1000.getTransmitTimestamp(myDistantDevice->timePollAckSent);
-				}
+				DW1000.getTransmitTimestamp(myDistantDevice->timePollAckSent);
 			}
 		}
 		else if(_type == TAG) {
@@ -413,9 +397,7 @@ void DW1000RangingClass::loop() {
 					//we search the device associated with the last send address
 					DW1000Device* myDistantDevice = searchDistantDevice(_lastSentToShortAddress);
 					//we save the value just for one device
-					if (myDistantDevice) {
-						myDistantDevice->timePollSent = timePollSent;
-					}
+					myDistantDevice->timePollSent = timePollSent;
 				}
 			}
 			else if(messageType == RANGE) {
@@ -432,9 +414,7 @@ void DW1000RangingClass::loop() {
 					//we search the device associated with the last send address
 					DW1000Device* myDistantDevice = searchDistantDevice(_lastSentToShortAddress);
 					//we save the value just for one device
-					if (myDistantDevice) {
-						myDistantDevice->timeRangeSent = timeRangeSent;
-					}
+					myDistantDevice->timeRangeSent = timeRangeSent;
 				}
 				
 			}
@@ -496,17 +476,15 @@ void DW1000RangingClass::loop() {
 			DW1000Device* myDistantDevice = searchDistantDevice(address);
 			
 			
-			if((_networkDevicesNumber == 0) || (myDistantDevice == nullptr)) {
+			if(myDistantDevice == NULL) {
+				Serial.println("Not found");
 				//we don't have the short address of the device in memory
-				if (DEBUG) {
-					Serial.println("Not found");
-					/*
-					Serial.print("unknown: ");
-					Serial.print(address[0], HEX);
-					Serial.print(":");
-					Serial.println(address[1], HEX);
-					*/
-				}
+				/*
+				Serial.print("unknown: ");
+				Serial.print(address[0], HEX);
+				Serial.print(":");
+				Serial.println(address[1], HEX);
+				*/
 				return;
 			}
 			
@@ -641,7 +619,7 @@ void DW1000RangingClass::loop() {
 					if(myDistantDevice->getIndex() == _networkDevicesNumber-1) {
 						_expectedMsgId = RANGE_REPORT;
 						//and transmit the next message (range) of the ranging protocole (in broadcast)
-						transmitRange(nullptr);
+						transmitRange(NULL);
 					}
 				}
 				else if(messageType == RANGE_REPORT) {
@@ -729,7 +707,7 @@ void DW1000RangingClass::timerTick() {
 		if(_type == TAG) {
 			_expectedMsgId = POLL_ACK;
 			//send a prodcast poll
-			transmitPoll(nullptr);
+			transmitPoll(NULL);
 		}
 	}
 	else if(counterForBlink == 0) {
@@ -795,7 +773,7 @@ void DW1000RangingClass::transmitPoll(DW1000Device* myDistantDevice) {
 	
 	transmitInit();
 	
-	if(myDistantDevice == nullptr) {
+	if(myDistantDevice == NULL) {
 		//we need to set our timerDelay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		
@@ -853,7 +831,7 @@ void DW1000RangingClass::transmitRange(DW1000Device* myDistantDevice) {
 	transmitInit();
 	
 	
-	if(myDistantDevice == nullptr) {
+	if(myDistantDevice == NULL) {
 		//we need to set our timerDelay:
 		_timerDelay = DEFAULT_TIMER_DELAY+(uint16_t)(_networkDevicesNumber*3*DEFAULT_REPLY_DELAY_TIME/1000);
 		

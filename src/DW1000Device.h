@@ -53,7 +53,7 @@ public:
 	void setFPPower(float power);
 	void setQuality(float quality);
 	
-	void setReplyDelayTime(uint16_t time) { _replyDelayTimeUS = time; }
+	void setReplyDelayTime(int16_t time) { _replyDelayTimeUS = time; }
 	
 	void setIndex(int8_t index) { _index = index; }
 	
@@ -64,7 +64,7 @@ public:
 	
 	int8_t getIndex() { return _index; }
 	
-	//String getAddress();
+	String getAddress();
 	byte* getByteShortAddress();
 	uint16_t getShortAddress();
 	//String getShortAddress();

@@ -28,6 +28,10 @@
 #ifndef _DW1000_H_INCLUDED
 #define _DW1000_H_INCLUDED
 
+#define pinSPI_CLK PA5
+#define pinSPI_MISO PA6
+#define pinSPI_MOSI PA7
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,16 +93,6 @@ public:
 	Set GPIO mode
 	*/
 	static void setGPIOMode(uint8_t msgp, uint8_t mode);
-
-        /**
-        Enable deep sleep mode
-        */
-        static void deepSleep();
-
-        /**
-        Wake-up from deep sleep by toggle chip select pin
-        */
-        static void spiWakeup();
 
 	/**
 	Resets all connected or the currently selected DW1000 chip. A hard reset of all chips
@@ -458,10 +452,7 @@ public:
 	
 	// whether RX or TX is active
 	static uint8_t _deviceMode;
-
-	// whether debounce clock is active
-	static boolean _debounceClockEnabled;
-
+	
 	/* Arduino interrupt handler */
 	static void handleInterrupt();
 	

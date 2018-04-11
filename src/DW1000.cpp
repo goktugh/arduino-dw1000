@@ -67,8 +67,6 @@ boolean    DW1000Class::_frameCheck          = true;
 boolean    DW1000Class::_permanentReceive    = false;
 uint8_t    DW1000Class::_deviceMode          = IDLE_MODE; // TODO replace by enum
 
-boolean    DW1000Class::_debounceClockEnabled = false;
-
 // modes of operation
 // TODO use enum external, not config array
 // this declaration is needed to make variables accessible while runtime from external code
@@ -98,12 +96,7 @@ const byte DW1000Class::BIAS_900_16[] = {137, 122, 105, 88, 69, 47, 25, 0, 21, 4
 const byte DW1000Class::BIAS_900_64[] = {147, 133, 117, 99, 75, 50, 29, 0, 24, 45, 63, 76, 87, 98, 116, 122, 132, 142};
 */
 // SPI settings
-#ifdef ESP8266
-	// default ESP8266 frequency is 80 Mhz, thus divide by 4 is 20 MHz
-	const SPISettings DW1000Class::_fastSPI = SPISettings(20000000L, MSBFIRST, SPI_MODE0);
-#else
-	const SPISettings DW1000Class::_fastSPI = SPISettings(16000000L, MSBFIRST, SPI_MODE0);
-#endif
+const SPISettings DW1000Class::_fastSPI = SPISettings(16000000L, MSBFIRST, SPI_MODE0);
 const SPISettings DW1000Class::_slowSPI = SPISettings(2000000L, MSBFIRST, SPI_MODE0);
 const SPISettings* DW1000Class::_currentSPI = &_fastSPI;
 
@@ -164,13 +157,11 @@ void DW1000Class::reselect(uint8_t ss) {
 void DW1000Class::begin(uint8_t irq, uint8_t rst) {
 	// generous initial init/wake-up-idle delay
 	delay(5);
-	// Configure the IRQ pin as INPUT. Required for correct interrupt setting for ESP8266
-    	pinMode(irq, INPUT);
 	// start SPI
 	SPI.begin();
-#ifndef ESP8266
-	SPI.usingInterrupt(digitalPinToInterrupt(irq)); // not every board support this, e.g. ESP8266
-#endif
+	//#ifndef ESP8266
+	//SPI.usingInterrupt(digitalPinToInterrupt(irq)); // not every board support this, e.g. ESP8266
+	//#endif
 	// pin and basic member setup
 	_rst        = rst;
 	_irq        = irq;
@@ -178,7 +169,7 @@ void DW1000Class::begin(uint8_t irq, uint8_t rst) {
 	// attach interrupt
 	//attachInterrupt(_irq, DW1000Class::handleInterrupt, CHANGE); // todo interrupt for ESP8266
 	// TODO throw error if pin is not a interrupt pin
-	attachInterrupt(digitalPinToInterrupt(_irq), DW1000Class::handleInterrupt, RISING); // todo interrupt for ESP8266
+	attachInterrupt(_irq, DW1000Class::handleInterrupt, RISING); // todo interrupt for ESP8266
 }
 
 void DW1000Class::manageLDE() {
@@ -186,7 +177,12 @@ void DW1000Class::manageLDE() {
 	byte ldoTune[LEN_OTP_RDAT];
 	readBytesOTP(0x04, ldoTune); // TODO #define
 	if(ldoTune[0] != 0) {
-		// TODO tuning available, copy over to RAM: use OTP_LDO bit
+      // TODO tuning available, copy over to RAM: use OTP_LDO bit
+      #define OTP_IF 0x2D
+      #define   OTP_SF  0x12
+      #define OTP_SF_LDO_KICK 0x02 
+      uint8 ldok = OTP_SF_LDO_KICK;                   
+      writeBytes(OTP_IF, OTP_SF, &ldok, 1); // set load LDE kick bit
 	}
 	// tell the chip to load the LDE microcode
 	// TODO remove clock-related code (PMSC_CTRL) as handled separately
@@ -204,7 +200,7 @@ void DW1000Class::manageLDE() {
 	writeBytes(OTP_IF, OTP_CTRL_SUB, otpctrl, 2);
 	delay(5);
 	pmscctrl0[0] = 0x00;
-	pmscctrl0[1] &= 0x02;
+	pmscctrl0[1] = 0x02;
 	writeBytes(PMSC, PMSC_CTRL0_SUB, pmscctrl0, 2);
 }
 
@@ -237,7 +233,6 @@ void DW1000Class::enableDebounceClock() {
 	setBit(pmscctrl0, LEN_PMSC_CTRL0, GPDCE_BIT, 1);
 	setBit(pmscctrl0, LEN_PMSC_CTRL0, KHZCLKEN_BIT, 1);
 	writeBytes(PMSC, PMSC_CTRL0_SUB, pmscctrl0, LEN_PMSC_CTRL0);
-        _debounceClockEnabled = true;
 }
 
 void DW1000Class::enableLedBlinking() {
@@ -257,48 +252,6 @@ void DW1000Class::setGPIOMode(uint8_t msgp, uint8_t mode) {
 	}
 	writeBytes(GPIO_CTRL, GPIO_MODE_SUB, gpiomode, LEN_GPIO_MODE);
 }
-
-void DW1000Class::deepSleep() {
-	byte aon_wcfg[LEN_AON_WCFG];
-	memset(aon_wcfg, 0, LEN_AON_WCFG);
-	readBytes(AON, AON_WCFG_SUB, aon_wcfg, LEN_AON_WCFG);
-	setBit(aon_wcfg, LEN_AON_WCFG, ONW_LDC_BIT, true);
-	setBit(aon_wcfg, LEN_AON_WCFG, ONW_LDD0_BIT, true);
-	writeBytes(AON, AON_WCFG_SUB, aon_wcfg, LEN_AON_WCFG);
-
-	byte pmsc_ctrl1[LEN_PMSC_CTRL1];
-	memset(pmsc_ctrl1, 0, LEN_PMSC_CTRL1);
-	readBytes(PMSC, PMSC_CTRL1_SUB, pmsc_ctrl1, LEN_PMSC_CTRL1);
-	setBit(pmsc_ctrl1, LEN_PMSC_CTRL1, ATXSLP_BIT, false);
-	setBit(pmsc_ctrl1, LEN_PMSC_CTRL1, ARXSLP_BIT, false);
-	writeBytes(PMSC, PMSC_CTRL1_SUB, pmsc_ctrl1, LEN_PMSC_CTRL1);
-
-	byte aon_cfg0[LEN_AON_CFG0];
-	memset(aon_cfg0, 0, LEN_AON_CFG0);
-	readBytes(AON, AON_CFG0_SUB, aon_cfg0, LEN_AON_CFG0);
-	setBit(aon_cfg0, LEN_AON_CFG0, WAKE_SPI_BIT, true);
-	setBit(aon_cfg0, LEN_AON_CFG0, WAKE_PIN_BIT, true);
-	setBit(aon_cfg0, LEN_AON_CFG0, WAKE_CNT_BIT, false);
-	setBit(aon_cfg0, LEN_AON_CFG0, SLEEP_EN_BIT, true);
-	writeBytes(AON, AON_CFG0_SUB, aon_cfg0, LEN_AON_CFG0);
-
-	byte aon_ctrl[LEN_AON_CTRL];
-	memset(aon_ctrl, 0, LEN_AON_CTRL);
-	readBytes(AON, AON_CTRL_SUB, aon_ctrl, LEN_AON_CTRL);
-	setBit(aon_ctrl, LEN_AON_CTRL, UPL_CFG_BIT, true);
-	setBit(aon_ctrl, LEN_AON_CTRL, SAVE_BIT, true);
-	writeBytes(AON, AON_CTRL_SUB, aon_ctrl, LEN_AON_CTRL);
-}
-
-void DW1000Class::spiWakeup(){
-        digitalWrite(_ss, LOW);
-        delay(2);
-        digitalWrite(_ss, HIGH);
-        if (_debounceClockEnabled){
-                DW1000Class::enableDebounceClock();
-        }
-}
-
 
 void DW1000Class::reset() {
 	if(_rst == 0xff) {
@@ -336,7 +289,8 @@ void DW1000Class::enableMode(const byte mode[]) {
 	setPreambleLength(mode[2]);
 	// TODO add channel and code to mode tuples
 	// TODO add channel and code settings with checks (see Table 58)
-	setChannel(CHANNEL_5);
+	setChannel(CHANNEL_5); // 6489.6 MHz
+	//setChannel(CHANNEL_2);   // 3993.6 MHz
 	if(mode[1] == TX_PULSE_FREQ_16MHZ) {
 		setPreambleCode(PREAMBLE_CODE_16MHZ_4);
 	} else {
@@ -363,7 +317,7 @@ void DW1000Class::tune() {
 	byte tcpgdelay[LEN_TC_PGDELAY];
 	byte fspllcfg[LEN_FS_PLLCFG];
 	byte fsplltune[LEN_FS_PLLTUNE];
-	byte fsxtalt[LEN_FS_XTALT];
+	byte fsxtalt[LEN_FS_XTALT]; // not used?
 	// AGC_TUNE1
 	if(_pulseFrequency == TX_PULSE_FREQ_16MHZ) {
 		writeValueToBytes(agctune1, 0x8870, LEN_AGC_TUNE1);
@@ -504,10 +458,10 @@ void DW1000Class::tune() {
 		writeValueToBytes(fsplltune, 0x26, LEN_FS_PLLTUNE);
 	} else if(_channel == CHANNEL_3) {
 		writeValueToBytes(fspllcfg, 0x08401009L, LEN_FS_PLLCFG);
-		writeValueToBytes(fsplltune, 0x56, LEN_FS_PLLTUNE);
+		writeValueToBytes(fsplltune, 0x5E, LEN_FS_PLLTUNE);
 	} else if(_channel == CHANNEL_5 || _channel == CHANNEL_7) {
 		writeValueToBytes(fspllcfg, 0x0800041DL, LEN_FS_PLLCFG);
-		writeValueToBytes(fsplltune, 0xBE, LEN_FS_PLLTUNE);
+		writeValueToBytes(fsplltune, 0xA6, LEN_FS_PLLTUNE);
 	} else {
 		// TODO proper error/warning handling
 	}
@@ -681,15 +635,8 @@ void DW1000Class::tune() {
 	} else {
 		// TODO proper error/warning handling
 	}
-	// Crystal calibration from OTP (if available)
-	byte buf_otp[4];
-	readBytesOTP(0x01E, buf_otp);
-	if (buf_otp[0] == 0) {
-		// No trim value available from OTP, use midrange value of 0x10
-		writeValueToBytes(fsxtalt, ((0x10 & 0x1F) | 0x60), LEN_FS_XTALT);
-	} else {
-		writeValueToBytes(fsxtalt, ((buf_otp[0] & 0x1F) | 0x60), LEN_FS_XTALT);
-	}
+	// mid range XTAL trim (TODO here we assume no calibration data available in OTP)
+	//writeValueToBytes(fsxtalt, 0x60, LEN_FS_XTALT);
 	// write configuration back to chip
 	writeBytes(AGC_TUNE, AGC_TUNE1_SUB, agctune1, LEN_AGC_TUNE1);
 	writeBytes(AGC_TUNE, AGC_TUNE2_SUB, agctune2, LEN_AGC_TUNE2);
@@ -708,7 +655,7 @@ void DW1000Class::tune() {
 	writeBytes(TX_CAL, TC_PGDELAY_SUB, tcpgdelay, LEN_TC_PGDELAY);
 	writeBytes(FS_CTRL, FS_PLLTUNE_SUB, fsplltune, LEN_FS_PLLTUNE);
 	writeBytes(FS_CTRL, FS_PLLCFG_SUB, fspllcfg, LEN_FS_PLLCFG);
-	writeBytes(FS_CTRL, FS_XTALT_SUB, fsxtalt, LEN_FS_XTALT);
+	//writeBytes(FS_CTRL, FS_XTALT_SUB, fsxtalt, LEN_FS_XTALT);
 }
 
 /* ###########################################################################
@@ -1336,10 +1283,10 @@ void DW1000Class::correctTimestamp(DW1000Time& timestamp) {
 	float rxPowerBase     = -(getReceivePower()+61.0f)*0.5f;
 	int16_t   rxPowerBaseLow  = (int16_t)rxPowerBase; // TODO check type
 	int16_t   rxPowerBaseHigh = rxPowerBaseLow+1; // TODO check type
-	if(rxPowerBaseLow <= 0) {
+	if(rxPowerBaseLow < 0) {
 		rxPowerBaseLow  = 0;
 		rxPowerBaseHigh = 0;
-	} else if(rxPowerBaseHigh >= 17) {
+	} else if(rxPowerBaseHigh > 17) {
 		rxPowerBaseLow  = 17;
 		rxPowerBaseHigh = 17;
 	}
@@ -1381,7 +1328,7 @@ void DW1000Class::correctTimestamp(DW1000Time& timestamp) {
 	DW1000Time adjustmentTime;
 	adjustmentTime.setTimestamp((int16_t)(rangeBias*DW1000Time::DISTANCE_OF_RADIO_INV*0.001f));
 	// apply correction
-	timestamp -= adjustmentTime;
+	timestamp += adjustmentTime;
 }
 
 void DW1000Class::getSystemTimestamp(DW1000Time& time) {
@@ -1429,9 +1376,8 @@ boolean DW1000Class::isReceiveFailed() {
 	return false;
 }
 
-//Checks to see any of the three timeout bits in sysstatus are high (RXRFTO (Frame Wait timeout), RXPTO (Preamble timeout), RXSFDTO (Start frame delimiter(?) timeout).
 boolean DW1000Class::isReceiveTimeout() {
-	return (getBit(_sysstatus, LEN_SYS_STATUS, RXRFTO_BIT) | getBit(_sysstatus, LEN_SYS_STATUS, RXPTO_BIT) | getBit(_sysstatus, LEN_SYS_STATUS, RXSFDTO_BIT));
+	return getBit(_sysstatus, LEN_SYS_STATUS, RXRFTO_BIT);
 }
 
 boolean DW1000Class::isClockProblem() {
@@ -1445,8 +1391,7 @@ boolean DW1000Class::isClockProblem() {
 }
 
 void DW1000Class::clearAllStatus() {
-	//Latched bits in status register are reset by writing 1 to them
-	memset(_sysstatus, 0xff, LEN_SYS_STATUS);
+	memset(_sysstatus, 0, LEN_SYS_STATUS);
 	writeBytes(SYS_STATUS, NO_SUB, _sysstatus, LEN_SYS_STATUS);
 }
 
@@ -1503,7 +1448,7 @@ float DW1000Class::getFirstPathPower() {
 	f3 = (uint16_t)fpAmpl3Bytes[0] | ((uint16_t)fpAmpl3Bytes[1] << 8);
 	N  = (((uint16_t)rxFrameInfo[2] >> 4) & 0xFF) | ((uint16_t)rxFrameInfo[3] << 4);
 	if(_pulseFrequency == TX_PULSE_FREQ_16MHZ) {
-		A       = 113.77;
+		A       = 115.72;
 		corrFac = 2.3334;
 	} else {
 		A       = 121.74;
@@ -1530,7 +1475,7 @@ float DW1000Class::getReceivePower() {
 	C = (uint16_t)cirPwrBytes[0] | ((uint16_t)cirPwrBytes[1] << 8);
 	N = (((uint16_t)rxFrameInfo[2] >> 4) & 0xFF) | ((uint16_t)rxFrameInfo[3] << 4);
 	if(_pulseFrequency == TX_PULSE_FREQ_16MHZ) {
-		A       = 113.77;
+		A       = 115.72;
 		corrFac = 2.3334;
 	} else {
 		A       = 121.74;

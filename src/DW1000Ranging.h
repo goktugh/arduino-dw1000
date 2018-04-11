@@ -43,24 +43,24 @@
 #define LEN_DATA 90
 
 //Max devices we put in the networkDevices array ! Each DW1000Device is 74 Bytes in SRAM memory for now.
-#define MAX_DEVICES 4
+#define MAX_DEVICES 20
 
 //Default Pin for module:
-#define DEFAULT_RST_PIN 9
-#define DEFAULT_SPI_SS_PIN 10
+#define DEFAULT_RST_PIN PA0
+#define DEFAULT_SPI_SS_PIN PA4
 
 //Default value
 //in ms
-#define DEFAULT_RESET_PERIOD 200
+#define DEFAULT_RESET_PERIOD 1000 
 //in us
-#define DEFAULT_REPLY_DELAY_TIME 7000
+#define DEFAULT_REPLY_DELAY_TIME 4000 
 
 //sketch type (anchor or tag)
 #define TAG 0
 #define ANCHOR 1
 
 //default timer delay
-#define DEFAULT_TIMER_DELAY 80
+#define DEFAULT_TIMER_DELAY 40  
 
 //debug mode
 #ifndef DEBUG
@@ -78,8 +78,8 @@ public:
 	static void    initCommunication(uint8_t myRST = DEFAULT_RST_PIN, uint8_t mySS = DEFAULT_SPI_SS_PIN, uint8_t myIRQ = 2);
 	static void    configureNetwork(uint16_t deviceAddress, uint16_t networkId, const byte mode[]);
 	static void    generalStart();
-	static void    startAsAnchor(char address[], const byte mode[], const bool randomShortAddress = true);
-	static void    startAsTag(char address[], const byte mode[], const bool randomShortAddress = true);
+	static void    startAsAnchor(char address[], const byte mode[]);
+	static void    startAsTag(char address[], const byte mode[]);
 	static boolean addNetworkDevices(DW1000Device* device, boolean shortAddress);
 	static boolean addNetworkDevices(DW1000Device* device);
 	static void    removeNetworkDevices(int16_t index);
@@ -123,7 +123,7 @@ public:
 private:
 	//other devices in the network
 	static DW1000Device _networkDevices[MAX_DEVICES];
-	static volatile uint8_t _networkDevicesNumber;
+	static uint8_t      _networkDevicesNumber;
 	static int16_t      _lastDistantDevice;
 	static byte         _currentAddress[8];
 	static byte         _currentShortAddress[2];
